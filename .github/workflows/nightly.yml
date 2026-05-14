@@ -1,8 +1,8 @@
-name: Nightly PKG
+name: unNightly PKG
 
 on:
-  schedule:
-    - cron: "0 0 * * *"
+ # schedule:
+  #  - cron: "0 0 * * *"
   workflow_dispatch:
 
 permissions:
@@ -11,20 +11,20 @@ permissions:
 
 jobs:
   AppImage:
-    if: github.repository == 'darktable-org/darktable' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
     name: Nightly darktable AppImage
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, ubuntu-24.04-arm]
+        os: [ubuntu-22.04] #, ubuntu-24.04-arm]
         branch:
           - { code: master, label: gitmaster }
         include:
           - os: ubuntu-22.04
             compiler: { compiler: GNU12, CC: gcc-12, CXX: g++-12, packages: gcc-12 g++-12 }
-          - os: ubuntu-24.04-arm
-            compiler: { compiler: GNU14, CC: gcc-14, CXX: g++-14, packages: gcc-14 g++-14 }
+          #- os: ubuntu-24.04-arm
+          # compiler: { compiler: GNU14, CC: gcc-14, CXX: g++-14, packages: gcc-14 g++-14 }
     env:
       CC: ${{ matrix.compiler.CC }}
       CXX: ${{ matrix.compiler.CXX }}
@@ -198,7 +198,7 @@ jobs:
           - Release
         msystem:
           - UCRT64
-          - CLANGARM64
+          #- CLANGARM64
         target:
           - skiptest
         generator:
@@ -207,8 +207,8 @@ jobs:
         include:
           - msystem: UCRT64
             os: windows-latest
-          - msystem: CLANGARM64
-            os: windows-11-arm
+          #- msystem: CLANGARM64
+           # os: windows-11-arm
     defaults:
       run:
         shell: msys2 {0}
@@ -334,93 +334,15 @@ jobs:
           name: artifact-windows-${{ runner.arch }}
           retention-days: 1
 
-  macOS:
-    if: github.repository == 'darktable-org/darktable' || github.event_name == 'workflow_dispatch'
-    name: Nightly darktable macOS
-    runs-on: ${{ matrix.build.os }}
-    strategy:
-      fail-fast: true
-      matrix:
-        build:
-          - { os: macos-14,       xcode: 16.2, deployment: 14.0 } # AppleClang 16, arm64
-          - { os: macos-15-intel, xcode: 26.3, deployment: 15.0 } # AppleClang 17, x86_64
-        compiler:
-          - { compiler: XCode,   CC: cc, CXX: c++ }
-        btype: [ Release ]
-        eco: [-DBINARY_PACKAGE_BUILD=ON -DBUILD_CURVE_TOOLS=ON -DBUILD_NOISE_TOOLS=ON -DUSE_GRAPHICSMAGICK=ON -DUSE_IMAGEMAGICK=OFF]
-        target:
-          - skiptest
-        generator:
-          - Ninja
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_${{ matrix.build.xcode }}.app/Contents/Developer
-      CC: ${{ matrix.compiler.CC }}
-      CXX: ${{ matrix.compiler.CXX }}
-      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.build.deployment }}
-      SRC_DIR: ${{ github.workspace }}/src
-      BUILD_DIR: ${{ github.workspace }}/src/build
-      INSTALL_PREFIX: ${{ github.workspace }}/src/build/macosx
-      ECO: ${{ matrix.eco }}
-      CMAKE_BUILD_TYPE: ${{ matrix.btype }}
-      GENERATOR: ${{ matrix.generator }}
-      TARGET: ${{ matrix.target }}
-    steps:
-      - name: Checkout darktable master branch
-        run: |
-          # Note that we can't make a shallow clone to reduce clone traffic and time, as we have to
-          # fetch the entire history to correctly generate the version for the disk image filename
-          git clone -b ${{ github.ref_name }} https://github.com/${{ github.repository }} src
-          pushd src
-          git submodule init
-          git config submodule.src/tests/integration.update none
-          git submodule update
-          popd
-      - name: Install Base Dependencies
-        run: |
-          brew update > /dev/null || true
-          cd src/.ci
-          export HOMEBREW_NO_INSTALL_UPGRADE=1
-          brew bundle --quiet || true
-
-          # rebuild graphicsmagick for macOS bundling
-          export HOMEBREW_NO_INSTALL_FROM_API=1
-          brew developer on
-          gm_formula=`brew edit --quiet --print-path graphicsmagick`
-          cat $gm_formula | sed 's/--with-modules/--disable-installed/1' > gm_formula.tmp
-          mv gm_formula.tmp $gm_formula
-          brew reinstall --build-from-source --force --quiet graphicsmagick
-      - name: Cancel workflow if job fails
-        if: ${{ failure() }}
-        uses: andymckay/cancel-action@0.5
-      - name: Build and Install
-        run: |
-          cmake -E make_directory "${BUILD_DIR}";
-          cmake -E make_directory "${INSTALL_PREFIX}";
-          ./src/.ci/ci-script.sh;
-      - name: Build macOS package
-        run: |
-          ./src/packaging/macosx/3_make_hb_darktable_package.sh
-      - name: Create DMG file
-        run: |
-          ./src/packaging/macosx/4_make_hb_darktable_dmg.sh
-      - name: Get version info
-        run: |
-          cd ${SRC_DIR}
-          echo "VERSION=$(git describe --tags --match release-* | sed 's/^release-//;s/-/+/;s/-/~/;s/rc/~rc/')" >> $GITHUB_ENV
-          echo "ARCHITECTURE=$(uname -m)" >> $GITHUB_ENV
-      - name: Package upload
-        uses: actions/upload-artifact@v7
-        with:
-          path: ${{ env.INSTALL_PREFIX }}/darktable-${{ env.VERSION }}-${{ env.ARCHITECTURE }}.dmg
-          name: artifact-macos-${{ runner.arch }}
-          retention-days: 1
+  
+  
 
   upload_to_release:
     permissions:
       # We need write permission to update the nightly tag
       contents: write
     runs-on: ubuntu-latest
-    needs: [AppImage, Windows, macOS]
+    needs: [AppImage, Windows]
     steps:
       - name: Checkout master to update 'nightly' tag
         if: github.ref_name == 'master' # will be true only for nightly builds
@@ -486,4 +408,4 @@ jobs:
           artifacts: |
             artifact-appimage-*/*
             artifact-windows-*/*
-            artifact-macos-*/*
+            
